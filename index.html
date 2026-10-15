@@ -33,6 +33,26 @@ header p{color:var(--muted)}
 .tags{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap}
 .tag{font-size:.75rem;background:#F6F1E7;color:#8A7F72;padding:2px 10px;border-radius:999px}
 .empty{text-align:center;color:var(--muted);padding:60px 0;display:none}
+.suggest{background:#fff;border:1px solid var(--line);border-radius:20px;padding:24px;margin:8px 0 28px}
+.suggest .shead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+.suggest h2{font-size:1.25rem;font-weight:800}
+.suggest .stime{font-size:.85rem;color:var(--muted)}
+.shuffle{background:var(--chip);border:1.5px solid var(--line);border-radius:999px;padding:8px 18px;font-family:inherit;font-size:.85rem;font-weight:700;color:var(--accent-d);cursor:pointer}
+.shuffle:hover{border-color:var(--accent)}
+.carwrap{position:relative;margin-top:16px}
+.car{direction:ltr;display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 2px 10px;scrollbar-width:none}
+.car::-webkit-scrollbar{display:none}
+.scar{direction:rtl;flex:0 0 78%;scroll-snap-align:center;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;cursor:pointer}
+@media(min-width:700px){.scar{flex:0 0 31%}}
+.scar img{width:100%;height:150px;object-fit:cover;display:block}
+.scar .sbody{padding:14px 16px}
+.scar h4{font-size:1rem;margin-top:6px}
+.cbtn{position:absolute;top:38%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:1.1rem;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.08);z-index:2}
+.cprev{left:6px}.cnext{right:6px}
+.cbtn:hover{border-color:var(--accent);color:var(--accent)}
+.dots{display:flex;gap:8px;justify-content:center;margin-top:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--line);cursor:pointer;border:none;padding:0}
+.dot.active{background:var(--accent)}
 .detail{display:none}
 .back{background:none;border:none;color:var(--accent);font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;margin-bottom:16px}
 .recipe{background:#fff;border:1px solid var(--line);border-radius:20px;padding:32px;overflow:hidden}
@@ -56,6 +76,18 @@ footer{text-align:center;color:var(--muted);font-size:.8rem;margin-top:48px}
 <body>
 <div class="wrap">
 <header><h1>🍳 لیست آشپزیم</h1><p>دستورهای آشپزی ذخیره‌شده</p></header>
+<div class="suggest" id="suggestBox">
+  <div class="shead">
+    <div><h2 id="slotLabel">🍽️ پیشنهاد الان</h2><div class="stime" id="slotTime"></div></div>
+    <button class="shuffle" onclick="renderSuggest()">🔀 پیشنهادهای دیگه</button>
+  </div>
+  <div class="carwrap">
+    <button class="cbtn cprev" onclick="carMove(-1)">‹</button>
+    <div class="car" id="carTrack"></div>
+    <button class="cbtn cnext" onclick="carMove(1)">›</button>
+  </div>
+  <div class="dots" id="carDots"></div>
+</div>
 <div id="listView">
 <div class="search"><span class="icon">🔍</span><input id="q" type="text" placeholder="جستجو در دستورها، مواد اولیه..."></div>
 <div class="chips" id="chips"></div>
@@ -127,7 +159,71 @@ function back(){
   document.getElementById('detail').style.display='none';
   document.getElementById('listView').style.display='block';
 }
+/* ---- time-based suggestions (Asia/Tehran) ---- */
+function tehranNow(){
+  return new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Tehran'}));
+}
+function slotFor(h){
+  if(h>=5 && h<10.5)   return {label:'صبحانه', cats:['صبحانه']};
+  if(h>=10.5 && h<12)  return {label:'میان‌وعده', cats:['پیش‌غذا','دسر']};
+  if(h>=12 && h<16)    return {label:'ناهار', cats:['غذای اصلی']};
+  if(h>=16 && h<19)    return {label:'عصرانه', cats:['پیش‌غذا','دسر']};
+  if(h>=19 && h<23.5)  return {label:'شام', cats:['غذای اصلی']};
+  return {label:'میان‌وعده‌ی نیمه‌شب', cats:['پیش‌غذا','دسر']};
+}
+function shuffleArr(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+let carTimer=null;
+function renderSuggest(){
+  const now = tehranNow();
+  const h = now.getHours()+now.getMinutes()/60;
+  const slot = slotFor(h);
+  document.getElementById('slotLabel').textContent = '🍽️ پیشنهاد '+slot.label;
+  const hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('slotTime').textContent = 'الان ساعت '+hh+':'+mm+' به وقت تهرانه';
+  let pool = RECIPES.filter(r=>slot.cats.includes(r.category));
+  if(!pool.length) pool = RECIPES.slice();
+  const picks = shuffleArr(pool.slice()).slice(0,4);
+  const drink = shuffleArr(RECIPES.filter(r=>r.category==='نوشیدنی'))[0];
+  if(drink && !picks.some(r=>r.id===drink.id)) picks.push(drink);
+  const track = document.getElementById('carTrack');
+  track.innerHTML = picks.map(r=>`
+    <div class="scar" onclick="show('${r.id}')">
+      <img src="${r.image}" alt="${r.title}" loading="lazy">
+      <div class="sbody"><span class="badge">${r.category}</span><h4>${r.title}</h4></div>
+    </div>`).join('');
+  const dots = document.getElementById('carDots');
+  dots.innerHTML = picks.map((_,i)=>`<button class="dot${i===0?' active':''}" onclick="carGo(${i})" aria-label="اسلاید ${i+1}"></button>`).join('');
+  track.scrollLeft = 0;
+  restartCarAuto();
+}
+function carCardW(){
+  const c = document.querySelector('#carTrack .scar');
+  return c ? c.offsetWidth+14 : 300;
+}
+function carMove(dir){
+  document.getElementById('carTrack').scrollBy({left:dir*carCardW()});
+  restartCarAuto();
+}
+function carGo(i){
+  document.getElementById('carTrack').scrollTo({left:i*carCardW()});
+  restartCarAuto();
+}
+function restartCarAuto(){
+  if(carTimer) clearInterval(carTimer);
+  carTimer = setInterval(()=>{
+    const t = document.getElementById('carTrack');
+    const max = t.scrollWidth - t.clientWidth - 10;
+    if(t.scrollLeft >= max) t.scrollTo({left:0});
+    else t.scrollBy({left:carCardW()});
+  }, 5000);
+}
+document.getElementById('carTrack').addEventListener('scroll', ()=>{
+  const t = document.getElementById('carTrack');
+  const i = Math.round(t.scrollLeft / carCardW());
+  document.querySelectorAll('#carDots .dot').forEach((d,k)=>d.classList.toggle('active', k===i));
+}, {passive:true});
 document.getElementById('q').addEventListener('input', render);
+renderSuggest();
 render();
 </script>
 </body>
